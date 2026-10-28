@@ -1,0 +1,1 @@
+// Define user types or domain models

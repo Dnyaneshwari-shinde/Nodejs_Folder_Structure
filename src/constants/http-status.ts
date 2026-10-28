@@ -1,0 +1,1 @@
+// Store shared HTTP status constants, if useful
