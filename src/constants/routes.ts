@@ -1,1 +1,3 @@
-// Store shared route path constants, if useful
+export const API_ROUTES = {
+  USERS: "/api/users",
+} as const;

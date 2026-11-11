@@ -5,12 +5,9 @@ A starter REST API project built with **Node.js**, **TypeScript**, and
 application setup, HTTP routes, request handling, business logic,
 validation, and data access.
 
-> **Project status:** This repository currently contains the project
-> structure and the `app.ts` / `server.ts` entry points. Folders such as
-> `config`, `controllers`, `services`, `repositories`, and `tests` are
-> places for future implementation; their presence does not mean
-> database integration, authentication, or automated tests are already
-> configured.
+> **Project status:** This starter API includes user registration and a
+> MongoDB-backed user repository. Configure a MongoDB instance and its
+> connection string before starting the server.
 
 ## Table of Contents
 
@@ -298,15 +295,13 @@ From the repository root:
 npm install
 ```
 
-If you are creating a local environment file and `.env.example` exists:
+Create a local environment file from the example:
 
 ``` bash
 cp .env.example .env
 ```
 
-Update the values for your environment. The app must explicitly load and
-validate environment variables; creating a `.env` file does not load it
-automatically.
+Update the values for your environment. The server loads `.env` at startup.
 
 ## Environment Variables
 
@@ -315,11 +310,12 @@ A minimal example could be:
 ``` dotenv
 PORT=3000
 NODE_ENV=development
+MONGODB_URI=mongodb://<username>:<password>@localhost:27017/myapp?authSource=admin
 ```
 
-Only add variables that the application actually reads. Add database
-configuration when database integration is implemented. Never commit
-real secrets.
+Set `MONGODB_URI` to your MongoDB connection string, for example
+`mongodb://<username>:<password>@localhost:27017/myapp?authSource=admin`.
+Keep credentials in `.env` or a deployment secret manager; do not commit them.
 
 ## Run in Development
 
@@ -351,6 +347,21 @@ curl http://localhost:3000/health
 
 The endpoint only works after it has been implemented and registered in
 the app.
+
+## User Registration
+
+Register a user with `POST /api/users/register` and a JSON body containing
+`name`, `email`, and `password`:
+
+``` bash
+curl -X POST http://localhost:3000/api/users/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Ada Lovelace","email":"ada@example.com","password":"SecurePass123"}'
+```
+
+Successful requests return `201`; invalid input returns `400`, and an
+already registered email returns `409`. Passwords are stored as scrypt
+hashes, and users persist in the MongoDB `users` collection.
 
 ## Build and Run in Production
 

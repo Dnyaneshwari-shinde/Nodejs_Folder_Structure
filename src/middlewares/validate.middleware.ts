@@ -1,1 +1,0 @@
-// Validate incoming requests
