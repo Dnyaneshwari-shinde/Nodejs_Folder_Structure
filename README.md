@@ -1,16 +1,9 @@
 # Node.js Folder Structure
 
-A starter REST API project built with **Node.js**, **TypeScript**, and
-**Express 5**. The project uses a layered structure to separate
-application setup, HTTP routes, request handling, business logic,
-validation, and data access.
-
-> **Project status:** This repository currently contains the project
-> structure and the `app.ts` / `server.ts` entry points. Folders such as
-> `config`, `controllers`, `services`, `repositories`, and `tests` are
-> places for future implementation; their presence does not mean
-> database integration, authentication, or automated tests are already
-> configured.
+A REST API built with **Node.js**, **TypeScript**, **Express 5**,
+**Mongoose**, and **Zod**. It includes user registration and login with
+bcrypt password hashing, JWTs, request validation, and centralized
+errors.
 
 ## Table of Contents
 
@@ -32,6 +25,11 @@ validation, and data access.
 -   **Node.js** --- JavaScript runtime
 -   **TypeScript** --- static typing
 -   **Express 5** --- HTTP API framework
+-   **Mongoose** --- MongoDB object modeling
+-   **Zod** --- request validation
+-   **bcryptjs** --- password hashing
+-   **jsonwebtoken** --- signed authentication tokens
+-   **http-status-codes** --- named HTTP status codes
 -   **tsx** --- runs TypeScript directly and watches files during
     development
 -   **TypeScript compiler (`tsc`)** --- compiles TypeScript to
@@ -47,22 +45,23 @@ nodejs_folder_structure/
 ├── src/
 │   ├── app.ts
 │   ├── server.ts
-│   ├── config/
-│   ├── constants/
-│   ├── controllers/
-│   ├── middlewares/
-│   ├── models/
-│   ├── repositories/
-│   ├── routes/
-│   ├── services/
-│   ├── utils/
-│   └── validators/
+│   ├── config/ (db.ts, env.ts)
+│   ├── constants/ (messages.ts)
+│   ├── controllers/ (user.controller.ts)
+│   ├── middlewares/ (validate.middleware.ts, error.middleware.ts)
+│   ├── models/ (user.model.ts)
+│   ├── repositories/ (user.repository.ts)
+│   ├── routes/ (user.routes.ts)
+│   ├── services/ (user.service.ts)
+│   ├── utils/ (ApiError.ts, ApiResponse.ts, asyncHandler.ts,
+│   │          generateToken.ts)
+│   └── validators/ (user.validator.ts)
 ├── tests/
-│   ├── integration/
-│   └── unit/
+│   ├── integration/ (user.routes.test.ts)
+│   └── unit/ (auth.test.ts, user.service.test.ts)
 ├── .env.example
 ├── .gitignore
-├── DockerFile
+├── Dockerfile
 ├── package.json
 ├── package-lock.json
 ├── tsconfig.json
@@ -96,10 +95,7 @@ when the project is built.
   `.env.example`                      Documents required environment
                                       variables using safe sample values
 
-  `DockerFile`                        Intended Docker image build
-                                      instructions; Docker conventionally
-                                      uses the filename `Dockerfile` with
-                                      a lowercase `f`
+  `Dockerfile`                        Docker image build instructions
 
   `README.md`                         Project setup, architecture, and
                                       development documentation
@@ -298,43 +294,43 @@ From the repository root:
 npm install
 ```
 
-If you are creating a local environment file and `.env.example` exists:
+If `.env` does not already exist, create it from the example (in Windows
+Command Prompt):
 
 ``` bash
-cp .env.example .env
+copy .env.example .env
 ```
 
-Update the values for your environment. The app must explicitly load and
-validate environment variables; creating a `.env` file does not load it
-automatically.
+If you already have a `.env`, keep its MongoDB URI and add/update the
+JWT and bcrypt settings shown below rather than overwriting the file.
+Use a unique JWT secret. Do not commit `.env` or use the sample secret in
+production.
 
 ## Environment Variables
 
-A minimal example could be:
+A local `.env` file should include:
 
 ``` dotenv
-PORT=3000
+PORT=5000
 NODE_ENV=development
+MONGODB_URI=mongodb://127.0.0.1:27017/auth_db
+MONGODB_DATABASE=auth_db
+JWT_SECRET=replace_with_a_random_secret_at_least_32_characters_long
+JWT_EXPIRES_IN=1d
+BCRYPT_SALT_ROUNDS=12
 ```
 
-Only add variables that the application actually reads. Add database
-configuration when database integration is implemented. Never commit
-real secrets.
+Generate a secret locally with:
+
+``` bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+Set `MONGODB_URI` to your own MongoDB connection string. The application
+loads `.env`, validates its JWT settings, connects to MongoDB, and only
+then starts listening.
 
 ## Run in Development
-
-Configure these scripts in `package.json`:
-
-``` json
-{
-  "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js",
-    "test": "node --test"
-  }
-}
-```
 
 Start the development server:
 
@@ -342,15 +338,58 @@ Start the development server:
 npm run dev
 ```
 
-If `src/app.ts` defines a health endpoint such as `/health`, test it
-with:
+The server listens on port 5000 by default. Check its health with:
 
 ``` bash
-curl http://localhost:3000/health
+curl http://localhost:5000/health
 ```
 
-The endpoint only works after it has been implemented and registered in
-the app.
+MongoDB must be running and reachable using `MONGODB_URI`.
+
+## Authentication APIs
+
+The route, controller, validation, and business logic live in
+`src/routes/`, `src/controllers/`, `src/validators/`, and
+`src/services/`; user persistence is in `src/repositories/` and
+`src/models/`.
+Repositories own database queries, and the password field is excluded
+from normal Mongoose queries and all API responses.
+
+### Register
+
+`POST http://localhost:5000/api/v1/auth/register`
+
+``` json
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "Password@123",
+  "confirmPassword": "Password@123"
+}
+```
+
+Returns `201 Created` with `{ "success": true, "message": "...", "data": {
+"user": { "id": "...", "name": "...", "email": "..." }, "token": "..." } }`.
+An existing email returns `409 Conflict`; invalid input returns `400`.
+
+### Login
+
+`POST http://localhost:5000/api/v1/auth/login`
+
+``` json
+{
+  "email": "john@example.com",
+  "password": "Password@123"
+}
+```
+
+Returns `200 OK` with the same user-and-token data shape. Invalid
+credentials return `401 Unauthorized`. Both APIs accept JSON request
+bodies and return structured errors as
+`{ "success": false, "message": "...", "errors": [] }`.
+
+In Postman, choose **POST**, set `Content-Type: application/json`, and
+paste the relevant JSON body above.
 
 ## Build and Run in Production
 
@@ -387,19 +426,14 @@ and health monitoring.
 
 ## Tests
 
-The `npm test` command shown above uses Node's built-in test runner. It
-is suitable for JavaScript tests that Node can execute. TypeScript tests
-may require a compatible runner or additional configuration.
-
 Run tests with:
 
 ``` bash
 npm test
 ```
 
-Add tests for successful requests, invalid inputs, expected
-business-rule failures, authentication and authorization, and unexpected
-errors as the application grows.
+The Node test runner is launched through `tsx` so it can execute the
+TypeScript tests.
 
 ## Development Guidelines
 
